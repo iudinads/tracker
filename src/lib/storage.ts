@@ -25,6 +25,10 @@ function normalizeData(raw: Partial<AppData>): AppData {
     savedDishes: raw.savedDishes ?? base.savedDishes,
     mealEntries: raw.mealEntries ?? base.mealEntries,
     calendarEvents: raw.calendarEvents ?? base.calendarEvents,
+    englishTopics: raw.englishTopics ?? base.englishTopics,
+    englishWords: raw.englishWords ?? base.englishWords,
+    grammarRules: raw.grammarRules ?? base.grammarRules,
+    dsNotes: raw.dsNotes ?? base.dsNotes,
   };
 }
 

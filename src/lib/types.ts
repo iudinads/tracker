@@ -95,6 +95,35 @@ export interface CalendarEvent {
   updatedAt: string;
 }
 
+export interface EnglishTopic {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface EnglishWord {
+  id: string;
+  topicId: string;
+  english: string;
+  russian: string;
+  phrases?: string;
+  createdAt: string;
+}
+
+export interface GrammarRule {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface DSNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface AppData {
   taskCategories: TaskCategory[];
   tasks: Task[];
@@ -104,6 +133,10 @@ export interface AppData {
   savedDishes: SavedDish[];
   mealEntries: MealEntry[];
   calendarEvents: CalendarEvent[];
+  englishTopics: EnglishTopic[];
+  englishWords: EnglishWord[];
+  grammarRules: GrammarRule[];
+  dsNotes: DSNote[];
 }
 
 export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
@@ -150,4 +183,8 @@ export const emptyData = (): AppData => ({
   savedDishes: [],
   mealEntries: [],
   calendarEvents: [],
+  englishTopics: [],
+  englishWords: [],
+  grammarRules: [],
+  dsNotes: [],
 });

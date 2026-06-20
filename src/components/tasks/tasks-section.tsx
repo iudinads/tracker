@@ -36,7 +36,7 @@ export function TasksSection() {
     data.tasks.filter((t) => t.status !== "cancelled")
   );
   const categoryTasks = sortTasksByDeadline(
-    data.tasks.filter((t) => t.categoryId === activeCategory)
+    data.tasks.filter((t) => t.categoryId === activeCategory && t.status !== "cancelled")
   );
 
   const openNewTask = () => {
@@ -81,15 +81,20 @@ export function TasksSection() {
   const handleSaveTask = async () => {
     if (!taskForm.title.trim() || !taskForm.categoryId) return;
     if (editingTask) {
-      await apiPut("/api/tasks", {
-        id: editingTask.id,
-        categoryId: taskForm.categoryId,
-        title: taskForm.title,
-        scheduledDate: taskForm.scheduledDate,
-        deadline: taskForm.deadline,
-        status: taskForm.status,
-      });
+      if (taskForm.status === "cancelled") {
+        await apiDelete(`/api/tasks?id=${editingTask.id}`);
+      } else {
+        await apiPut("/api/tasks", {
+          id: editingTask.id,
+          categoryId: taskForm.categoryId,
+          title: taskForm.title,
+          scheduledDate: taskForm.scheduledDate,
+          deadline: taskForm.deadline,
+          status: taskForm.status,
+        });
+      }
     } else {
+      if (taskForm.status === "cancelled") return;
       await apiPost("/api/tasks", {
         categoryId: taskForm.categoryId,
         title: taskForm.title,

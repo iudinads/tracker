@@ -184,6 +184,12 @@ export function CalendarSection({
     setSelectedDate((prev) => (prev === dateKey ? null : dateKey));
   };
 
+  const stopHeaderClick = (e: React.MouseEvent) => e.stopPropagation();
+
+  const handleHeaderClick = () => {
+    onToggle?.();
+  };
+
   const selectedEvents = selectedDate
     ? eventsForDate(data.calendarEvents, selectedDate)
     : [];
@@ -198,9 +204,15 @@ export function CalendarSection({
 
   return (
     <div className="rounded-2xl border border-neutral-100 bg-white overflow-hidden">
-      <div className={`flex items-center justify-between px-4 pt-4 ${collapsed ? "pb-3" : "pb-2"}`}>
+      <div
+        onClick={handleHeaderClick}
+        className={`flex items-center justify-between px-4 pt-4 ${collapsed ? "pb-3 cursor-pointer" : "pb-2 cursor-pointer"} hover:bg-neutral-50/80 transition-colors`}
+      >
         <button
-          onClick={goToPrevMonth}
+          onClick={(e) => {
+            stopHeaderClick(e);
+            goToPrevMonth();
+          }}
           className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition"
           aria-label="Предыдущий месяц"
         >
@@ -211,7 +223,10 @@ export function CalendarSection({
         </h2>
         <div className="flex items-center gap-0.5">
           <button
-            onClick={goToNextMonth}
+            onClick={(e) => {
+              stopHeaderClick(e);
+              goToNextMonth();
+            }}
             className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition"
             aria-label="Следующий месяц"
           >
@@ -219,7 +234,10 @@ export function CalendarSection({
           </button>
           {onToggle && (
             <button
-              onClick={onToggle}
+              onClick={(e) => {
+                stopHeaderClick(e);
+                onToggle();
+              }}
               className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition"
               aria-label={collapsed ? "Развернуть календарь" : "Свернуть календарь"}
             >
@@ -312,12 +330,6 @@ export function CalendarSection({
                   </span>
                 )}
 
-                {hasEvents && (
-                  <span className="mt-0.5 w-full px-0.5 text-[9px] leading-tight text-neutral-400 truncate text-center">
-                    {dayEvents[0].title}
-                    {dayEvents.length > 1 ? ` +${dayEvents.length - 1}` : ""}
-                  </span>
-                )}
               </button>
             );
           })}

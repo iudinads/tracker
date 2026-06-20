@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
     createdAt: now,
     updatedAt: now,
   };
+  if ((status as TaskStatus) === "cancelled") {
+    return NextResponse.json({ error: "Use delete for cancelled tasks" }, { status: 400 });
+  }
   data.tasks.push(task);
   writeData(data);
   return NextResponse.json(task);
@@ -43,6 +46,12 @@ export async function PUT(request: NextRequest) {
   }
 
   const task = data.tasks[idx];
+  if (status === "cancelled") {
+    data.tasks = data.tasks.filter((t) => t.id !== id);
+    writeData(data);
+    return NextResponse.json({ ok: true, deleted: true });
+  }
+
   if (title !== undefined) task.title = title.trim();
   if (categoryId !== undefined) task.categoryId = categoryId;
   if (scheduledDate !== undefined) task.scheduledDate = scheduledDate || undefined;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { apiPut } from "@/lib/data-context";
+import { apiDelete, apiPut } from "@/lib/data-context";
 import { Task, TaskStatus } from "@/lib/types";
 import {
   KANBAN_STATUSES,
@@ -43,7 +43,11 @@ export function KanbanBoard({
 
     setUpdatingId(taskId);
     try {
-      await apiPut("/api/tasks", { id: taskId, status: newStatus });
+      if (newStatus === "cancelled") {
+        await apiDelete(`/api/tasks?id=${taskId}`);
+      } else {
+        await apiPut("/api/tasks", { id: taskId, status: newStatus });
+      }
       await onRefresh();
     } finally {
       setUpdatingId(null);
