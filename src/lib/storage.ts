@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { AppData, emptyData } from "./types";
+import { AppData, defaultNutritionGoals, emptyData } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "tracker.json");
@@ -14,10 +14,24 @@ function ensureDataFile(): void {
   }
 }
 
+function normalizeData(raw: Partial<AppData>): AppData {
+  const base = emptyData();
+  return {
+    taskCategories: raw.taskCategories ?? base.taskCategories,
+    tasks: raw.tasks ?? base.tasks,
+    workoutCategories: raw.workoutCategories ?? base.workoutCategories,
+    workouts: raw.workouts ?? base.workouts,
+    nutritionGoals: raw.nutritionGoals ?? defaultNutritionGoals(),
+    savedDishes: raw.savedDishes ?? base.savedDishes,
+    mealEntries: raw.mealEntries ?? base.mealEntries,
+    calendarEvents: raw.calendarEvents ?? base.calendarEvents,
+  };
+}
+
 export function readData(): AppData {
   ensureDataFile();
   const raw = fs.readFileSync(DATA_FILE, "utf-8");
-  return JSON.parse(raw) as AppData;
+  return normalizeData(JSON.parse(raw) as Partial<AppData>);
 }
 
 export function writeData(data: AppData): void {

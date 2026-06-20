@@ -7,9 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/input";
 import { StatusBadge, formatDate } from "@/components/ui/badge";
+import { KanbanBoard } from "@/components/tasks/kanban-board";
+import { sortTasksByDeadline } from "@/lib/task-sort";
+
+type TaskView = "list" | "kanban";
 
 export function TasksSection() {
   const { data, loading, refresh } = useData();
+  const [view, setView] = useState<TaskView>("list");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -20,17 +25,29 @@ export function TasksSection() {
     scheduledDate: "",
     deadline: "",
     status: "backlog" as Task["status"],
+    categoryId: "",
   });
 
   const categories = data.taskCategories;
   const activeCategory = selectedCategory || categories[0]?.id || null;
-  const categoryTasks = data.tasks
-    .filter((t) => t.categoryId === activeCategory)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const categoryNames = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+
+  const allBoardTasks = sortTasksByDeadline(
+    data.tasks.filter((t) => t.status !== "cancelled")
+  );
+  const categoryTasks = sortTasksByDeadline(
+    data.tasks.filter((t) => t.categoryId === activeCategory)
+  );
 
   const openNewTask = () => {
     setEditingTask(null);
-    setTaskForm({ title: "", scheduledDate: "", deadline: "", status: "backlog" });
+    setTaskForm({
+      title: "",
+      scheduledDate: "",
+      deadline: "",
+      status: "backlog",
+      categoryId: activeCategory || categories[0]?.id || "",
+    });
     setShowTaskModal(true);
   };
 
@@ -41,6 +58,7 @@ export function TasksSection() {
       scheduledDate: task.scheduledDate || "",
       deadline: task.deadline || "",
       status: task.status,
+      categoryId: task.categoryId,
     });
     setShowTaskModal(true);
   };
@@ -61,11 +79,24 @@ export function TasksSection() {
   };
 
   const handleSaveTask = async () => {
-    if (!taskForm.title.trim() || !activeCategory) return;
+    if (!taskForm.title.trim() || !taskForm.categoryId) return;
     if (editingTask) {
-      await apiPut("/api/tasks", { id: editingTask.id, ...taskForm });
+      await apiPut("/api/tasks", {
+        id: editingTask.id,
+        categoryId: taskForm.categoryId,
+        title: taskForm.title,
+        scheduledDate: taskForm.scheduledDate,
+        deadline: taskForm.deadline,
+        status: taskForm.status,
+      });
     } else {
-      await apiPost("/api/tasks", { categoryId: activeCategory, ...taskForm });
+      await apiPost("/api/tasks", {
+        categoryId: taskForm.categoryId,
+        title: taskForm.title,
+        scheduledDate: taskForm.scheduledDate,
+        deadline: taskForm.deadline,
+        status: taskForm.status,
+      });
     }
     setShowTaskModal(false);
     await refresh();
@@ -83,11 +114,37 @@ export function TasksSection() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Разделы</h2>
-        <Button size="sm" variant="secondary" onClick={() => setShowCategoryModal(true)}>
-          + Раздел
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Дела</h2>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg bg-neutral-100 p-0.5">
+            <button
+              onClick={() => setView("list")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                view === "list"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-500 hover:text-neutral-700"
+              }`}
+            >
+              Список
+            </button>
+            <button
+              onClick={() => setView("kanban")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                view === "kanban"
+                  ? "bg-white text-neutral-900 shadow-sm"
+                  : "text-neutral-500 hover:text-neutral-700"
+              }`}
+            >
+              Доска
+            </button>
+          </div>
+          {categories.length > 0 && (
+            <Button size="sm" onClick={openNewTask}>
+              + Дело
+            </Button>
+          )}
+        </div>
       </div>
 
       {categories.length === 0 ? (
@@ -98,8 +155,28 @@ export function TasksSection() {
             Создать раздел
           </Button>
         </div>
+      ) : view === "kanban" ? (
+        allBoardTasks.length === 0 ? (
+          <div className="rounded-xl border border-neutral-100 bg-white py-12 text-center text-neutral-400">
+            Нет дел для доски
+          </div>
+        ) : (
+          <KanbanBoard
+            tasks={data.tasks}
+            categoryNames={categoryNames}
+            onEditTask={openEditTask}
+            onRefresh={refresh}
+          />
+        )
       ) : (
         <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-neutral-500">Разделы</h3>
+            <Button size="sm" variant="secondary" onClick={() => setShowCategoryModal(true)}>
+              + Раздел
+            </Button>
+          </div>
+
           <div className="flex gap-2 overflow-x-auto pb-1">
             {categories.map((cat) => (
               <div key={cat.id} className="flex shrink-0 items-center gap-1">
@@ -124,15 +201,6 @@ export function TasksSection() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-neutral-700">
-              {categories.find((c) => c.id === activeCategory)?.name}
-            </h3>
-            <Button size="sm" onClick={openNewTask}>
-              + Дело
-            </Button>
-          </div>
-
           {categoryTasks.length === 0 ? (
             <div className="rounded-xl border border-neutral-100 bg-white py-12 text-center text-neutral-400">
               Нет дел — добавьте первое
@@ -145,20 +213,19 @@ export function TasksSection() {
                   className="group rounded-xl border border-neutral-100 bg-white p-4 transition hover:border-neutral-200 hover:shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <button
-                      className="flex-1 text-left"
-                      onClick={() => openEditTask(task)}
-                    >
-                      <p className={`font-medium ${task.status === "cancelled" ? "line-through text-neutral-400" : ""}`}>
+                    <button className="flex-1 text-left" onClick={() => openEditTask(task)}>
+                      <p
+                        className={`font-medium ${task.status === "cancelled" ? "line-through text-neutral-400" : ""}`}
+                      >
                         {task.title}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
                         <StatusBadge status={task.status} />
                         {task.scheduledDate && (
-                          <span>📅 {formatDate(task.scheduledDate)}</span>
+                          <span>{formatDate(task.scheduledDate)}</span>
                         )}
                         {task.deadline && (
-                          <span>⏰ до {formatDate(task.deadline)}</span>
+                          <span>до {formatDate(task.deadline)}</span>
                         )}
                       </div>
                     </button>
@@ -174,6 +241,14 @@ export function TasksSection() {
             </div>
           )}
         </>
+      )}
+
+      {view === "kanban" && categories.length > 0 && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="secondary" onClick={() => setShowCategoryModal(true)}>
+            + Раздел
+          </Button>
+        </div>
       )}
 
       <Modal open={showCategoryModal} onClose={() => setShowCategoryModal(false)} title="Новый раздел">
@@ -200,6 +275,12 @@ export function TasksSection() {
         title={editingTask ? "Редактировать дело" : "Новое дело"}
       >
         <div className="space-y-4">
+          <Select
+            label="Раздел"
+            value={taskForm.categoryId}
+            onChange={(e) => setTaskForm({ ...taskForm, categoryId: e.target.value })}
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          />
           <Input
             label="Название"
             value={taskForm.title}

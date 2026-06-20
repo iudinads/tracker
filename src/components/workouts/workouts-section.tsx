@@ -267,12 +267,12 @@ export function WorkoutsSection() {
                           <p className="font-medium">{formatDate(workout.date)}</p>
                           <div className="mt-1 flex flex-wrap gap-3 text-xs text-neutral-500">
                             {workout.durationMinutes > 0 && (
-                              <span>⏱ {workout.durationMinutes} мин</span>
+                              <span>{workout.durationMinutes} мин</span>
                             )}
                             {workout.avgHeartRate && (
-                              <span>❤️ {workout.avgHeartRate} bpm</span>
+                              <span>{workout.avgHeartRate} bpm</span>
                             )}
-                            {workout.calories && <span>🔥 {workout.calories} kcal</span>}
+                            {workout.calories && <span>{workout.calories} kcal</span>}
                             <span>{workout.exercises.length} упражн.</span>
                           </div>
                         </div>

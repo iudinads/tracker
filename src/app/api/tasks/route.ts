@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = await request.json();
-  const { id, title, scheduledDate, deadline, status } = body;
+  const { id, title, scheduledDate, deadline, status, categoryId } = body;
 
   if (!id) {
     return NextResponse.json({ error: "ID required" }, { status: 400 });
@@ -44,6 +44,7 @@ export async function PUT(request: NextRequest) {
 
   const task = data.tasks[idx];
   if (title !== undefined) task.title = title.trim();
+  if (categoryId !== undefined) task.categoryId = categoryId;
   if (scheduledDate !== undefined) task.scheduledDate = scheduledDate || undefined;
   if (deadline !== undefined) task.deadline = deadline || undefined;
   if (status !== undefined) task.status = status;
