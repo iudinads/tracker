@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { apiDelete, apiPost, apiPut, useData } from "@/lib/data-context";
-import { Exercise, ExerciseSet, Workout, WorkoutCategory } from "@/lib/types";
+import { Exercise, ExerciseSet, Workout, WorkoutCategory, WorkoutTemplate, WorkoutTemplateExercise } from "@/lib/types";
 import {
   compareWorkouts,
   directionBg,
@@ -29,11 +29,39 @@ const emptyExercise = (): ExerciseForm => ({
   comment: "",
 });
 
+interface TemplateExerciseForm {
+  name: string;
+  setsCount: string;
+  comment: string;
+}
+
+const emptyTemplateExercise = (): TemplateExerciseForm => ({
+  name: "",
+  setsCount: "3",
+  comment: "",
+});
+
+function exercisesFromTemplate(template: WorkoutTemplate): ExerciseForm[] {
+  return template.exercises.map((ex) => ({
+    id: uuidv4(),
+    name: ex.name,
+    sets: Array.from({ length: ex.setsCount }, (_, i) => ({
+      setNumber: i + 1,
+      reps: 0,
+      weight: 0,
+    })),
+    comment: ex.comment || "",
+  }));
+}
+
 export function WorkoutsSection() {
   const { data, loading, refresh } = useData();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showTemplateFormModal, setShowTemplateFormModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | null>(null);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [categoryName, setCategoryName] = useState("");
@@ -44,9 +72,16 @@ export function WorkoutsSection() {
     calories: "",
     exercises: [emptyExercise()] as ExerciseForm[],
   });
+  const [templateForm, setTemplateForm] = useState({
+    name: "",
+    exercises: [emptyTemplateExercise()] as TemplateExerciseForm[],
+  });
 
   const categories = data.workoutCategories;
   const activeCategory = selectedCategory || categories[0]?.id || null;
+  const categoryTemplates = data.workoutTemplates.filter(
+    (t) => t.categoryId === activeCategory
+  );
   const categoryWorkouts = data.workouts
     .filter((w) => w.categoryId === activeCategory)
     .sort((a, b) => {
@@ -65,6 +100,37 @@ export function WorkoutsSection() {
       exercises: [emptyExercise()],
     });
     setShowWorkoutModal(true);
+  };
+
+  const applyTemplate = (template: WorkoutTemplate) => {
+    setWorkoutForm((prev) => ({
+      ...prev,
+      exercises: exercisesFromTemplate(template),
+    }));
+    setShowTemplateModal(false);
+    setShowWorkoutModal(true);
+  };
+
+  const openNewTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({
+      name: "",
+      exercises: [emptyTemplateExercise()],
+    });
+    setShowTemplateFormModal(true);
+  };
+
+  const openEditTemplate = (template: WorkoutTemplate) => {
+    setEditingTemplate(template);
+    setTemplateForm({
+      name: template.name,
+      exercises: template.exercises.map((ex) => ({
+        name: ex.name,
+        setsCount: String(ex.setsCount),
+        comment: ex.comment || "",
+      })),
+    });
+    setShowTemplateFormModal(true);
   };
 
   const openEditWorkout = (workout: Workout) => {
@@ -136,6 +202,63 @@ export function WorkoutsSection() {
     if (!confirm("Удалить тренировку?")) return;
     await apiDelete(`/api/workouts?id=${id}`);
     await refresh();
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!activeCategory || !templateForm.name.trim()) return;
+    const exercises: WorkoutTemplateExercise[] = templateForm.exercises
+      .filter((ex) => ex.name.trim())
+      .map((ex) => ({
+        name: ex.name.trim(),
+        setsCount: Math.max(1, Number(ex.setsCount) || 1),
+        comment: ex.comment.trim() || undefined,
+      }));
+
+    if (exercises.length === 0) return;
+
+    const payload = {
+      name: templateForm.name,
+      categoryId: activeCategory,
+      exercises,
+    };
+
+    if (editingTemplate) {
+      await apiPut("/api/workouts/templates", { id: editingTemplate.id, ...payload });
+    } else {
+      await apiPost("/api/workouts/templates", payload);
+    }
+    setShowTemplateFormModal(false);
+    await refresh();
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!confirm("Удалить шаблон?")) return;
+    await apiDelete(`/api/workouts/templates?id=${id}`);
+    await refresh();
+  };
+
+  const addTemplateExercise = () => {
+    setTemplateForm({
+      ...templateForm,
+      exercises: [...templateForm.exercises, emptyTemplateExercise()],
+    });
+  };
+
+  const removeTemplateExercise = (index: number) => {
+    setTemplateForm({
+      ...templateForm,
+      exercises: templateForm.exercises.filter((_, i) => i !== index),
+    });
+  };
+
+  const updateTemplateExercise = (
+    index: number,
+    field: keyof TemplateExerciseForm,
+    value: string
+  ) => {
+    const exercises = [...templateForm.exercises];
+    exercises[index] = { ...exercises[index], [field]: value };
+    setTemplateForm({ ...templateForm, exercises });
   };
 
   const addExercise = () => {
@@ -236,9 +359,14 @@ export function WorkoutsSection() {
             <h3 className="font-medium text-neutral-700">
               {categories.find((c) => c.id === activeCategory)?.name}
             </h3>
-            <Button size="sm" onClick={openNewWorkout}>
-              + Тренировка
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setShowTemplateModal(true)}>
+                Шаблоны
+              </Button>
+              <Button size="sm" onClick={openNewWorkout}>
+                + Тренировка
+              </Button>
+            </div>
           </div>
 
           {categoryWorkouts.length === 0 ? (
@@ -394,6 +522,28 @@ export function WorkoutsSection() {
         wide
       >
         <div className="space-y-5">
+          {!editingWorkout && categoryTemplates.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-neutral-500">Из шаблона</p>
+              <div className="flex flex-wrap gap-1.5">
+                {categoryTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() =>
+                      setWorkoutForm((prev) => ({
+                        ...prev,
+                        exercises: exercisesFromTemplate(template),
+                      }))
+                    }
+                    className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-neutral-400"
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Input
               label="Дата"
@@ -505,6 +655,124 @@ export function WorkoutsSection() {
               Отмена
             </Button>
             <Button onClick={handleSaveWorkout}>Сохранить</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+        title="Шаблоны тренировок"
+        wide
+      >
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={openNewTemplate}>
+              + Шаблон
+            </Button>
+          </div>
+
+          {categoryTemplates.length === 0 ? (
+            <p className="py-8 text-center text-sm text-neutral-400">
+              Нет шаблонов для этого раздела. Создайте шаблон с упражнениями и количеством подходов.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {categoryTemplates.map((template) => (
+                <div
+                  key={template.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-neutral-100 p-3"
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{template.name}</p>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {template.exercises.map((ex) => `${ex.name} (${ex.setsCount} подх.)`).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => applyTemplate(template)}>
+                      Использовать
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEditTemplate(template)}>
+                      Изменить
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => handleDeleteTemplate(template.id)}>
+                      Удалить
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={showTemplateFormModal}
+        onClose={() => setShowTemplateFormModal(false)}
+        title={editingTemplate ? "Редактировать шаблон" : "Новый шаблон"}
+        wide
+      >
+        <div className="space-y-5">
+          <Input
+            label="Название шаблона"
+            placeholder="Тренировка спины"
+            value={templateForm.name}
+            onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+            autoFocus
+          />
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Упражнения</h4>
+              <Button size="sm" variant="secondary" onClick={addTemplateExercise}>
+                + Упражнение
+              </Button>
+            </div>
+
+            {templateForm.exercises.map((exercise, exIndex) => (
+              <div key={exIndex} className="rounded-xl border border-neutral-200 p-4 space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    label="Название упражнения"
+                    placeholder="Жим лёжа"
+                    value={exercise.name}
+                    onChange={(e) => updateTemplateExercise(exIndex, "name", e.target.value)}
+                    className="flex-1"
+                  />
+                  <Input
+                    label="Подходов"
+                    type="number"
+                    min={1}
+                    value={exercise.setsCount}
+                    onChange={(e) => updateTemplateExercise(exIndex, "setsCount", e.target.value)}
+                    className="w-24"
+                  />
+                  {templateForm.exercises.length > 1 && (
+                    <button
+                      onClick={() => removeTemplateExercise(exIndex)}
+                      className="self-end mb-0.5 rounded-lg p-2 text-neutral-300 hover:bg-red-50 hover:text-red-500"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <Textarea
+                  label="Комментарий"
+                  placeholder="Заметка к упражнению"
+                  rows={2}
+                  value={exercise.comment}
+                  onChange={(e) => updateTemplateExercise(exIndex, "comment", e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowTemplateFormModal(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleSaveTemplate}>Сохранить</Button>
           </div>
         </div>
       </Modal>

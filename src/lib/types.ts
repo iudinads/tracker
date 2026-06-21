@@ -47,6 +47,20 @@ export interface WorkoutCategory {
   createdAt: string;
 }
 
+export interface WorkoutTemplateExercise {
+  name: string;
+  setsCount: number;
+  comment?: string;
+}
+
+export interface WorkoutTemplate {
+  id: string;
+  name: string;
+  categoryId: string;
+  exercises: WorkoutTemplateExercise[];
+  createdAt: string;
+}
+
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
 export interface NutritionGoals {
@@ -78,6 +92,13 @@ export interface MealEntry {
   createdAt: string;
 }
 
+export interface WeightEntry {
+  id: string;
+  date: string;
+  weight: number;
+  createdAt: string;
+}
+
 export type CalendarEventCategory =
   | "party"
   | "workout"
@@ -90,6 +111,9 @@ export interface CalendarEvent {
   title: string;
   startDate: string;
   endDate: string;
+  allDay?: boolean;
+  startTime?: string;
+  endTime?: string;
   category: CalendarEventCategory;
   createdAt: string;
   updatedAt: string;
@@ -129,9 +153,11 @@ export interface AppData {
   tasks: Task[];
   workoutCategories: WorkoutCategory[];
   workouts: Workout[];
+  workoutTemplates: WorkoutTemplate[];
   nutritionGoals: NutritionGoals;
   savedDishes: SavedDish[];
   mealEntries: MealEntry[];
+  weightEntries: WeightEntry[];
   calendarEvents: CalendarEvent[];
   englishTopics: EnglishTopic[];
   englishWords: EnglishWord[];
@@ -179,9 +205,11 @@ export const emptyData = (): AppData => ({
   tasks: [],
   workoutCategories: [],
   workouts: [],
+  workoutTemplates: [],
   nutritionGoals: defaultNutritionGoals(),
   savedDishes: [],
   mealEntries: [],
+  weightEntries: [],
   calendarEvents: [],
   englishTopics: [],
   englishWords: [],

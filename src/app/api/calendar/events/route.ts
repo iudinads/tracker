@@ -16,6 +16,9 @@ function validateEventBody(body: {
   startDate?: string;
   endDate?: string;
   category?: string;
+  allDay?: boolean;
+  startTime?: string;
+  endTime?: string;
 }): string | null {
   if (!body.title?.trim()) return "Title required";
   if (!body.startDate || !body.endDate) return "Dates required";
@@ -23,7 +26,22 @@ function validateEventBody(body: {
   if (!body.category || !VALID_CATEGORIES.includes(body.category as CalendarEventCategory)) {
     return "Invalid category";
   }
+  if (body.allDay === false) {
+    if (!body.startTime || !body.endTime) return "Time required when not all day";
+    if (!/^\d{2}:\d{2}$/.test(body.startTime) || !/^\d{2}:\d{2}$/.test(body.endTime)) {
+      return "Invalid time format";
+    }
+  }
   return null;
+}
+
+function buildEventTimes(body: { allDay?: boolean; startTime?: string; endTime?: string }) {
+  const isAllDay = body.allDay !== false;
+  return {
+    allDay: isAllDay,
+    startTime: isAllDay ? undefined : body.startTime,
+    endTime: isAllDay ? undefined : body.endTime,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -35,11 +53,13 @@ export async function POST(request: NextRequest) {
 
   const data = readData();
   const now = new Date().toISOString();
+  const times = buildEventTimes(body);
   const event: CalendarEvent = {
     id: uuidv4(),
     title: body.title.trim(),
     startDate: body.startDate,
     endDate: body.endDate,
+    ...times,
     category: body.category as CalendarEventCategory,
     createdAt: now,
     updatedAt: now,
@@ -69,9 +89,13 @@ export async function PUT(request: NextRequest) {
   }
 
   const event = data.calendarEvents[idx];
+  const times = buildEventTimes(body);
   event.title = body.title.trim();
   event.startDate = body.startDate;
   event.endDate = body.endDate;
+  event.allDay = times.allDay;
+  event.startTime = times.startTime;
+  event.endTime = times.endTime;
   event.category = body.category as CalendarEventCategory;
   event.updatedAt = new Date().toISOString();
 

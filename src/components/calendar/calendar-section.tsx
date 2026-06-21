@@ -50,6 +50,9 @@ export function CalendarSection({
     startDate: "",
     endDate: "",
     category: "other" as CalendarEventCategory,
+    allDay: true,
+    startTime: "09:00",
+    endTime: "10:00",
   });
 
   const touchStartX = useRef<number | null>(null);
@@ -135,19 +138,34 @@ export function CalendarSection({
       startDate: start,
       endDate: start,
       category: "other",
+      allDay: true,
+      startTime: "09:00",
+      endTime: "10:00",
     });
     setShowEventModal(true);
   };
 
   const openEditEvent = (event: CalendarEvent) => {
     setEditingEvent(event);
+    const isAllDay = event.allDay !== false;
     setEventForm({
       title: event.title,
       startDate: event.startDate,
       endDate: event.endDate,
       category: event.category,
+      allDay: isAllDay,
+      startTime: event.startTime || "09:00",
+      endTime: event.endTime || "10:00",
     });
     setShowEventModal(true);
+  };
+
+  const formatEventTime = (event: CalendarEvent) => {
+    if (event.allDay !== false || !event.startTime) return null;
+    if (event.endTime && event.endTime !== event.startTime) {
+      return `${event.startTime} — ${event.endTime}`;
+    }
+    return event.startTime;
   };
 
   const handleSaveEvent = async () => {
@@ -161,6 +179,9 @@ export function CalendarSection({
         startDate: eventForm.startDate,
         endDate: eventForm.endDate,
         category: eventForm.category,
+        allDay: eventForm.allDay,
+        startTime: eventForm.allDay ? undefined : eventForm.startTime,
+        endTime: eventForm.allDay ? undefined : eventForm.endTime,
       });
     } else {
       await apiPost("/api/calendar/events", {
@@ -168,8 +189,19 @@ export function CalendarSection({
         startDate: eventForm.startDate,
         endDate: eventForm.endDate,
         category: eventForm.category,
+        allDay: eventForm.allDay,
+        startTime: eventForm.allDay ? undefined : eventForm.startTime,
+        endTime: eventForm.allDay ? undefined : eventForm.endTime,
       });
     }
+    setShowEventModal(false);
+    await refresh();
+  };
+
+  const handleDeleteFromModal = async () => {
+    if (!editingEvent) return;
+    if (!confirm("Удалить событие?")) return;
+    await apiDelete(`/api/calendar/events?id=${editingEvent.id}`);
     setShowEventModal(false);
     await refresh();
   };
@@ -354,10 +386,11 @@ export function CalendarSection({
               {selectedEvents.map((event) => {
                 const cat = categoryMap[event.category];
                 const isRange = event.startDate !== event.endDate;
+                const timeLabel = formatEventTime(event);
                 return (
                   <li
                     key={event.id}
-                    className="group flex items-start justify-between gap-3 rounded-xl border border-neutral-100 p-3 hover:border-neutral-200 transition"
+                    className="flex items-start justify-between gap-3 rounded-xl border border-neutral-100 p-3 hover:border-neutral-200 transition"
                   >
                     <button
                       onClick={() => openEditEvent(event)}
@@ -371,6 +404,9 @@ export function CalendarSection({
                         </span>
                       </div>
                       <p className="mt-1 font-medium text-neutral-900">{event.title}</p>
+                      {timeLabel && (
+                        <p className="mt-0.5 text-xs text-neutral-500">{timeLabel}</p>
+                      )}
                       {isRange && (
                         <p className="mt-0.5 text-xs text-neutral-500">
                           {formatDate(event.startDate)} — {formatDate(event.endDate)}
@@ -379,9 +415,9 @@ export function CalendarSection({
                     </button>
                     <button
                       onClick={() => handleDeleteEvent(event.id)}
-                      className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500 transition shrink-0"
+                      className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-500 transition shrink-0"
                     >
-                      ✕
+                      Удалить
                     </button>
                   </li>
                 );
@@ -439,7 +475,43 @@ export function CalendarSection({
               })
             }
           />
+          <label className="flex items-center gap-2 text-sm text-neutral-600">
+            <input
+              type="checkbox"
+              checked={eventForm.allDay}
+              onChange={(e) =>
+                setEventForm({ ...eventForm, allDay: e.target.checked })
+              }
+              className="rounded border-neutral-300"
+            />
+            Весь день
+          </label>
+          {!eventForm.allDay && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Время начала"
+                type="time"
+                value={eventForm.startTime}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, startTime: e.target.value })
+                }
+              />
+              <Input
+                label="Время конца"
+                type="time"
+                value={eventForm.endTime}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, endTime: e.target.value })
+                }
+              />
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
+            {editingEvent && (
+              <Button variant="danger" onClick={handleDeleteFromModal}>
+                Удалить
+              </Button>
+            )}
             <Button className="flex-1" onClick={handleSaveEvent}>
               {editingEvent ? "Сохранить" : "Добавить"}
             </Button>

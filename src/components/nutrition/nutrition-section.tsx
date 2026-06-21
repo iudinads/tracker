@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { apiDelete, apiPost, apiPut, useData } from "@/lib/data-context";
-import { MEAL_TYPES, MealEntry, MealType, SavedDish } from "@/lib/types";
+import { MEAL_TYPES, MealEntry, MealType, SavedDish, WeightEntry } from "@/lib/types";
 import { sumMeals } from "@/lib/nutrition-utils";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/input";
 import { ProgressRing } from "@/components/nutrition/progress-ring";
+import { WeightChart } from "@/components/nutrition/weight-chart";
 import { formatDate } from "@/components/ui/badge";
 
 function shiftDate(dateStr: string, days: number): string {
@@ -34,6 +35,7 @@ export function NutritionSection() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showWeightModal, setShowWeightModal] = useState(false);
   const [editingMeal, setEditingMeal] = useState<MealEntry | null>(null);
   const [goalsForm, setGoalsForm] = useState({
     calories: "",
@@ -42,10 +44,17 @@ export function NutritionSection() {
     carbs: "",
   });
   const [mealForm, setMealForm] = useState(emptyMealForm());
+  const [weightForm, setWeightForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    weight: "",
+  });
 
   const goals = data.nutritionGoals;
   const dayMeals = data.mealEntries.filter((m) => m.date === selectedDate);
   const totals = sumMeals(dayMeals);
+  const weightEntries = [...data.weightEntries].sort((a, b) =>
+    b.date.localeCompare(a.date)
+  );
 
   const openSettings = () => {
     setGoalsForm({
@@ -140,6 +149,30 @@ export function NutritionSection() {
     await refresh();
   };
 
+  const openWeightModal = () => {
+    setWeightForm({
+      date: new Date().toISOString().split("T")[0],
+      weight: "",
+    });
+    setShowWeightModal(true);
+  };
+
+  const handleSaveWeight = async () => {
+    if (!weightForm.date || !weightForm.weight) return;
+    await apiPost<WeightEntry>("/api/nutrition/weight", {
+      date: weightForm.date,
+      weight: weightForm.weight,
+    });
+    setShowWeightModal(false);
+    await refresh();
+  };
+
+  const handleDeleteWeight = async (id: string) => {
+    if (!confirm("Удалить измерение?")) return;
+    await apiDelete(`/api/nutrition/weight?id=${id}`);
+    await refresh();
+  };
+
   if (loading) {
     return <div className="py-20 text-center text-neutral-400">Загрузка...</div>;
   }
@@ -223,6 +256,44 @@ export function NutritionSection() {
           </div>
         );
       })}
+
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-neutral-700">Вес</h3>
+          <Button size="sm" onClick={openWeightModal}>
+            + Измерение
+          </Button>
+        </div>
+
+        {weightEntries.length > 0 && (
+          <div className="space-y-1.5">
+            {weightEntries.slice(0, 5).map((entry) => (
+              <div
+                key={entry.id}
+                className="flex items-center justify-between rounded-lg border border-neutral-100 bg-white px-3 py-2.5"
+              >
+                <div>
+                  <p className="text-sm font-medium">{entry.weight} кг</p>
+                  <p className="mt-0.5 text-xs text-neutral-500">{formatDate(entry.date)}</p>
+                </div>
+                <button
+                  onClick={() => handleDeleteWeight(entry.id)}
+                  className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-500"
+                >
+                  Удалить
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="rounded-xl border border-neutral-100 bg-white p-4">
+          <WeightChart entries={data.weightEntries} />
+          <p className="mt-2 text-center text-[10px] text-neutral-400">
+            Целевой диапазон: 51–53 кг
+          </p>
+        </div>
+      </div>
 
       <Modal open={showSettings} onClose={() => setShowSettings(false)} title="Нормы на день">
         <div className="space-y-4">
@@ -393,6 +464,32 @@ export function NutritionSection() {
             ))}
           </div>
         )}
+      </Modal>
+
+      <Modal open={showWeightModal} onClose={() => setShowWeightModal(false)} title="Новое измерение">
+        <div className="space-y-4">
+          <Input
+            label="Дата измерения"
+            type="date"
+            value={weightForm.date}
+            onChange={(e) => setWeightForm({ ...weightForm, date: e.target.value })}
+          />
+          <Input
+            label="Вес (кг)"
+            type="number"
+            min={0}
+            step="0.1"
+            value={weightForm.weight}
+            onChange={(e) => setWeightForm({ ...weightForm, weight: e.target.value })}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowWeightModal(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleSaveWeight}>Добавить</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
