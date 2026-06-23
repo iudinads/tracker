@@ -5,7 +5,7 @@ import { apiDelete, apiPost, apiPut, useData } from "@/lib/data-context";
 import { TASK_STATUSES, Task, TaskCategory } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { StatusBadge, formatDate } from "@/components/ui/badge";
 import { KanbanBoard } from "@/components/tasks/kanban-board";
 import { sortTasksByDeadline } from "@/lib/task-sort";
@@ -22,11 +22,13 @@ export function TasksSection() {
   const [categoryName, setCategoryName] = useState("");
   const [taskForm, setTaskForm] = useState({
     title: "",
+    comment: "",
     scheduledDate: "",
     deadline: "",
     status: "backlog" as Task["status"],
     categoryId: "",
   });
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const categories = data.taskCategories;
   const activeCategory = selectedCategory || categories[0]?.id || null;
@@ -43,6 +45,7 @@ export function TasksSection() {
     setEditingTask(null);
     setTaskForm({
       title: "",
+      comment: "",
       scheduledDate: "",
       deadline: "",
       status: "backlog",
@@ -55,6 +58,7 @@ export function TasksSection() {
     setEditingTask(task);
     setTaskForm({
       title: task.title,
+      comment: task.comment || "",
       scheduledDate: task.scheduledDate || "",
       deadline: task.deadline || "",
       status: task.status,
@@ -88,6 +92,7 @@ export function TasksSection() {
           id: editingTask.id,
           categoryId: taskForm.categoryId,
           title: taskForm.title,
+          comment: taskForm.comment,
           scheduledDate: taskForm.scheduledDate,
           deadline: taskForm.deadline,
           status: taskForm.status,
@@ -98,6 +103,7 @@ export function TasksSection() {
       await apiPost("/api/tasks", {
         categoryId: taskForm.categoryId,
         title: taskForm.title,
+        comment: taskForm.comment,
         scheduledDate: taskForm.scheduledDate,
         deadline: taskForm.deadline,
         status: taskForm.status,
@@ -171,6 +177,10 @@ export function TasksSection() {
             categoryNames={categoryNames}
             onEditTask={openEditTask}
             onRefresh={refresh}
+            expandedTaskId={expandedTaskId}
+            onToggleExpand={(id) =>
+              setExpandedTaskId((prev) => (prev === id ? null : id))
+            }
           />
         )
       ) : (
@@ -212,17 +222,30 @@ export function TasksSection() {
             </div>
           ) : (
             <div className="space-y-2">
-              {categoryTasks.map((task) => (
+              {categoryTasks.map((task) => {
+                const isExpanded = expandedTaskId === task.id;
+
+                return (
                 <div
                   key={task.id}
                   className="group rounded-xl border border-neutral-100 bg-white p-4 transition hover:border-neutral-200 hover:shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <button className="flex-1 text-left" onClick={() => openEditTask(task)}>
+                    <button
+                      className="flex-1 text-left"
+                      onClick={() =>
+                        setExpandedTaskId((prev) => (prev === task.id ? null : task.id))
+                      }
+                    >
                       <p
                         className={`font-medium ${task.status === "cancelled" ? "line-through text-neutral-400" : ""}`}
                       >
                         {task.title}
+                        {task.comment && !isExpanded && (
+                          <span className="ml-2 text-xs font-normal text-neutral-400">
+                            есть комментарий
+                          </span>
+                        )}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
                         <StatusBadge status={task.status} />
@@ -233,16 +256,32 @@ export function TasksSection() {
                           <span>до {formatDate(task.deadline)}</span>
                         )}
                       </div>
+                      {isExpanded && task.comment && (
+                        <p className="mt-3 border-t border-neutral-100 pt-3 text-sm text-neutral-600 whitespace-pre-wrap">
+                          {task.comment}
+                        </p>
+                      )}
                     </button>
-                    <button
-                      onClick={() => handleDeleteTask(task.id)}
-                      className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500 transition"
-                    >
-                      ×
-                    </button>
+                    <div className="flex shrink-0 gap-1">
+                      {isExpanded && (
+                        <button
+                          onClick={() => openEditTask(task)}
+                          className="rounded-lg px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100"
+                        >
+                          Изменить
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="rounded-lg p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500 transition"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </>
@@ -291,6 +330,13 @@ export function TasksSection() {
             value={taskForm.title}
             onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
             autoFocus
+          />
+          <Textarea
+            label="Комментарий"
+            placeholder="Заметки к делу"
+            rows={3}
+            value={taskForm.comment}
+            onChange={(e) => setTaskForm({ ...taskForm, comment: e.target.value })}
           />
           <div className="grid grid-cols-2 gap-3">
             <Input

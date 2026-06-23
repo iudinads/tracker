@@ -5,7 +5,7 @@ import { Task, TaskStatus } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { categoryId, title, scheduledDate, deadline, status } = body;
+  const { categoryId, title, comment, scheduledDate, deadline, status } = body;
 
   if (!categoryId || !title?.trim()) {
     return NextResponse.json({ error: "Required fields missing" }, { status: 400 });
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     id: uuidv4(),
     categoryId,
     title: title.trim(),
+    comment: comment?.trim() || undefined,
     scheduledDate: scheduledDate || undefined,
     deadline: deadline || undefined,
     status: (status as TaskStatus) || "backlog",
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = await request.json();
-  const { id, title, scheduledDate, deadline, status, categoryId } = body;
+  const { id, title, comment, scheduledDate, deadline, status, categoryId } = body;
 
   if (!id) {
     return NextResponse.json({ error: "ID required" }, { status: 400 });
@@ -53,6 +54,7 @@ export async function PUT(request: NextRequest) {
   }
 
   if (title !== undefined) task.title = title.trim();
+  if (comment !== undefined) task.comment = comment.trim() || undefined;
   if (categoryId !== undefined) task.categoryId = categoryId;
   if (scheduledDate !== undefined) task.scheduledDate = scheduledDate || undefined;
   if (deadline !== undefined) task.deadline = deadline || undefined;

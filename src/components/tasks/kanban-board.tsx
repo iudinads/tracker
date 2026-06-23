@@ -16,6 +16,8 @@ interface KanbanBoardProps {
   categoryNames: Record<string, string>;
   onEditTask: (task: Task) => void;
   onRefresh: () => Promise<void>;
+  expandedTaskId?: string | null;
+  onToggleExpand?: (id: string) => void;
 }
 
 const columnStyles: Record<TaskStatus, string> = {
@@ -30,6 +32,8 @@ export function KanbanBoard({
   categoryNames,
   onEditTask,
   onRefresh,
+  expandedTaskId = null,
+  onToggleExpand,
 }: KanbanBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
@@ -101,7 +105,10 @@ export function KanbanBoard({
               {columnTasks.length === 0 ? (
                 <p className="py-6 text-center text-xs text-neutral-400">Пусто</p>
               ) : (
-                columnTasks.map((task) => (
+                columnTasks.map((task) => {
+                  const isExpanded = expandedTaskId === task.id;
+
+                  return (
                   <div
                     key={task.id}
                     draggable
@@ -119,7 +126,7 @@ export function KanbanBoard({
                   >
                     <button
                       className="w-full text-left"
-                      onClick={() => onEditTask(task)}
+                      onClick={() => onToggleExpand?.(task.id)}
                     >
                       {categoryNames[task.categoryId] && (
                         <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-neutral-400">
@@ -128,6 +135,11 @@ export function KanbanBoard({
                       )}
                       <p className="text-sm font-medium text-neutral-900 leading-snug">
                         {task.title}
+                        {task.comment && !isExpanded && (
+                          <span className="ml-1 text-[10px] font-normal text-neutral-400">
+                            · комментарий
+                          </span>
+                        )}
                       </p>
                       {(task.deadline || task.scheduledDate) && (
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -151,9 +163,22 @@ export function KanbanBoard({
                           )}
                         </div>
                       )}
+                      {isExpanded && task.comment && (
+                        <p className="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-600 whitespace-pre-wrap">
+                          {task.comment}
+                        </p>
+                      )}
                     </button>
 
-                    <div className="mt-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                    <div className="mt-2 flex gap-1">
+                      {isExpanded && (
+                        <button
+                          onClick={() => onEditTask(task)}
+                          className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100"
+                        >
+                          Изменить
+                        </button>
+                      )}
                       {column.value !== "backlog" && (
                         <button
                           onClick={() => moveTask(task, "prev")}
@@ -174,7 +199,8 @@ export function KanbanBoard({
                       )}
                     </div>
                   </div>
-                ))
+                );
+                })
               )}
             </div>
           </div>

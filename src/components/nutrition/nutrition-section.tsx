@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { apiDelete, apiPost, apiPut, useData } from "@/lib/data-context";
 import { MEAL_TYPES, MealEntry, MealType, SavedDish, WeightEntry } from "@/lib/types";
 import { sumMeals } from "@/lib/nutrition-utils";
+import {
+  FOOD_PRODUCTS,
+  calcMacrosFromGrams,
+  findProducts,
+} from "@/data/food-products";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/input";
@@ -27,6 +32,8 @@ const emptyMealForm = () => ({
   saveToHistory: false,
 });
 
+type MealEntryMode = "grams" | "custom";
+
 export function NutritionSection() {
   const { data, loading, refresh } = useData();
   const [selectedDate, setSelectedDate] = useState(
@@ -44,6 +51,10 @@ export function NutritionSection() {
     carbs: "",
   });
   const [mealForm, setMealForm] = useState(emptyMealForm());
+  const [mealEntryMode, setMealEntryMode] = useState<MealEntryMode>("grams");
+  const [selectedProduct, setSelectedProduct] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [grams, setGrams] = useState("");
   const [weightForm, setWeightForm] = useState({
     date: new Date().toISOString().split("T")[0],
     weight: "",
@@ -56,24 +67,45 @@ export function NutritionSection() {
     b.date.localeCompare(a.date)
   );
 
-  const openSettings = () => {
-    setGoalsForm({
-      calories: String(goals.calories),
-      protein: String(goals.protein),
-      fat: String(goals.fat),
-      carbs: String(goals.carbs),
-    });
-    setShowSettings(true);
+  const productSuggestions = useMemo(
+    () => findProducts(productSearch || selectedProduct),
+    [productSearch, selectedProduct]
+  );
+
+  const applyGramsCalculation = (product: string, gramsValue: string) => {
+    const per100 = FOOD_PRODUCTS[product];
+    const gramsNum = Number(gramsValue);
+    if (!per100 || !gramsNum || gramsNum <= 0) return;
+
+    const macros = calcMacrosFromGrams(per100, gramsNum);
+    setMealForm((prev) => ({
+      ...prev,
+      name: `${product}, ${gramsNum} г`,
+      calories: String(macros.calories),
+      protein: String(macros.protein),
+      fat: String(macros.fat),
+      carbs: String(macros.carbs),
+    }));
+  };
+
+  const resetGramsForm = () => {
+    setSelectedProduct("");
+    setProductSearch("");
+    setGrams("");
   };
 
   const openNewMeal = (mealType?: MealType) => {
     setEditingMeal(null);
+    setMealEntryMode("grams");
+    resetGramsForm();
     setMealForm({ ...emptyMealForm(), mealType: mealType || "breakfast" });
     setShowMealModal(true);
   };
 
   const openEditMeal = (meal: MealEntry) => {
     setEditingMeal(meal);
+    setMealEntryMode("custom");
+    resetGramsForm();
     setMealForm({
       name: meal.name,
       calories: String(meal.calories),
@@ -87,6 +119,9 @@ export function NutritionSection() {
   };
 
   const applyDish = (dish: SavedDish) => {
+    setEditingMeal(null);
+    setMealEntryMode("custom");
+    resetGramsForm();
     setMealForm({
       name: dish.name,
       calories: String(dish.calories),
@@ -100,19 +135,32 @@ export function NutritionSection() {
     setShowMealModal(true);
   };
 
-  const handleSaveGoals = async () => {
-    await apiPut("/api/nutrition/settings", {
-      calories: goalsForm.calories,
-      protein: goalsForm.protein,
-      fat: goalsForm.fat,
-      carbs: goalsForm.carbs,
+  const openSettings = () => {
+    setGoalsForm({
+      calories: String(goals.calories),
+      protein: String(goals.protein),
+      fat: String(goals.fat),
+      carbs: String(goals.carbs),
     });
-    setShowSettings(false);
-    await refresh();
+    setShowSettings(true);
+  };
+
+  const selectProduct = (product: string) => {
+    setSelectedProduct(product);
+    setProductSearch(product);
+    applyGramsCalculation(product, grams);
+  };
+
+  const handleGramsChange = (value: string) => {
+    setGrams(value);
+    if (selectedProduct) {
+      applyGramsCalculation(selectedProduct, value);
+    }
   };
 
   const handleSaveMeal = async () => {
     if (!mealForm.name.trim()) return;
+    if (mealEntryMode === "grams" && (!selectedProduct || !grams || Number(grams) <= 0)) return;
 
     const payload = {
       name: mealForm.name,
@@ -134,6 +182,17 @@ export function NutritionSection() {
     }
 
     setShowMealModal(false);
+    await refresh();
+  };
+
+  const handleSaveGoals = async () => {
+    await apiPut("/api/nutrition/settings", {
+      calories: goalsForm.calories,
+      protein: goalsForm.protein,
+      fat: goalsForm.fat,
+      carbs: goalsForm.carbs,
+    });
+    setShowSettings(false);
     await refresh();
   };
 
@@ -342,7 +401,48 @@ export function NutritionSection() {
         title={editingMeal ? "Редактировать" : "Добавить блюдо"}
       >
         <div className="space-y-4">
-          {!editingMeal && data.savedDishes.length > 0 && (
+          {!editingMeal && (
+            <div className="flex rounded-lg bg-neutral-100 p-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setMealEntryMode("grams");
+                  resetGramsForm();
+                  setMealForm((prev) => ({
+                    ...emptyMealForm(),
+                    mealType: prev.mealType,
+                  }));
+                }}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  mealEntryMode === "grams"
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
+                }`}
+              >
+                По граммам
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMealEntryMode("custom");
+                  resetGramsForm();
+                  setMealForm((prev) => ({
+                    ...emptyMealForm(),
+                    mealType: prev.mealType,
+                  }));
+                }}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  mealEntryMode === "custom"
+                    ? "bg-white text-neutral-900 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
+                }`}
+              >
+                Вручную
+              </button>
+            </div>
+          )}
+
+          {!editingMeal && mealEntryMode === "custom" && data.savedDishes.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">Из истории</p>
               <div className="flex flex-wrap gap-1.5">
@@ -368,12 +468,100 @@ export function NutritionSection() {
             </div>
           )}
 
-          <Input
-            label="Название"
-            value={mealForm.name}
-            onChange={(e) => setMealForm({ ...mealForm, name: e.target.value })}
-            autoFocus
-          />
+          {!editingMeal && mealEntryMode === "grams" ? (
+            <>
+              <div>
+                <Input
+                  label="Продукт"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Начните вводить название"
+                  autoFocus
+                />
+                {productSuggestions.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {productSuggestions.map((product) => (
+                      <button
+                        key={product}
+                        type="button"
+                        onClick={() => selectProduct(product)}
+                        className={`rounded-full border px-3 py-1 text-xs transition ${
+                          selectedProduct === product
+                            ? "border-neutral-900 bg-neutral-900 text-white"
+                            : "border-neutral-200 text-neutral-600 hover:border-neutral-400"
+                        }`}
+                      >
+                        {product}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Input
+                label="Граммы"
+                type="number"
+                min={1}
+                step="1"
+                value={grams}
+                onChange={(e) => handleGramsChange(e.target.value)}
+                placeholder="60"
+              />
+              {selectedProduct && grams && Number(grams) > 0 && (
+                <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-600">
+                  <p className="font-medium text-neutral-700">{mealForm.name || selectedProduct}</p>
+                  <p className="mt-1">
+                    {mealForm.calories || 0} ккал · Б {mealForm.protein || 0} · Ж {mealForm.fat || 0} · У{" "}
+                    {mealForm.carbs || 0}
+                  </p>
+                  <p className="mt-1 text-neutral-400">
+                    на 100 г: {FOOD_PRODUCTS[selectedProduct][0]} ккал · Б{" "}
+                    {FOOD_PRODUCTS[selectedProduct][1]} · Ж {FOOD_PRODUCTS[selectedProduct][2]} · У{" "}
+                    {FOOD_PRODUCTS[selectedProduct][3]}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <Input
+                label="Название"
+                value={mealForm.name}
+                onChange={(e) => setMealForm({ ...mealForm, name: e.target.value })}
+                autoFocus={editingMeal !== null || mealEntryMode === "custom"}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Ккал"
+                  type="number"
+                  min={0}
+                  value={mealForm.calories}
+                  onChange={(e) => setMealForm({ ...mealForm, calories: e.target.value })}
+                />
+                <Input
+                  label="Белки (г)"
+                  type="number"
+                  min={0}
+                  value={mealForm.protein}
+                  onChange={(e) => setMealForm({ ...mealForm, protein: e.target.value })}
+                />
+                <Input
+                  label="Жиры (г)"
+                  type="number"
+                  min={0}
+                  value={mealForm.fat}
+                  onChange={(e) => setMealForm({ ...mealForm, fat: e.target.value })}
+                />
+                <Input
+                  label="Углеводы (г)"
+                  type="number"
+                  min={0}
+                  value={mealForm.carbs}
+                  onChange={(e) => setMealForm({ ...mealForm, carbs: e.target.value })}
+                />
+              </div>
+            </>
+          )}
+
           <Select
             label="Приём пищи"
             value={mealForm.mealType}
@@ -382,38 +570,8 @@ export function NutritionSection() {
             }
             options={MEAL_TYPES}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Ккал"
-              type="number"
-              min={0}
-              value={mealForm.calories}
-              onChange={(e) => setMealForm({ ...mealForm, calories: e.target.value })}
-            />
-            <Input
-              label="Белки (г)"
-              type="number"
-              min={0}
-              value={mealForm.protein}
-              onChange={(e) => setMealForm({ ...mealForm, protein: e.target.value })}
-            />
-            <Input
-              label="Жиры (г)"
-              type="number"
-              min={0}
-              value={mealForm.fat}
-              onChange={(e) => setMealForm({ ...mealForm, fat: e.target.value })}
-            />
-            <Input
-              label="Углеводы (г)"
-              type="number"
-              min={0}
-              value={mealForm.carbs}
-              onChange={(e) => setMealForm({ ...mealForm, carbs: e.target.value })}
-            />
-          </div>
 
-          {!editingMeal && (
+          {!editingMeal && mealEntryMode === "custom" && (
             <label className="flex items-center gap-2 text-sm text-neutral-600">
               <input
                 type="checkbox"

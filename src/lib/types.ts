@@ -10,6 +10,7 @@ export interface Task {
   id: string;
   categoryId: string;
   title: string;
+  comment?: string;
   scheduledDate?: string;
   deadline?: string;
   status: TaskStatus;
