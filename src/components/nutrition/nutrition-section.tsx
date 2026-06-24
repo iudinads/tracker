@@ -202,6 +202,14 @@ export function NutritionSection() {
     await refresh();
   };
 
+  const handleDeleteMealFromModal = async () => {
+    if (!editingMeal) return;
+    if (!confirm("Удалить запись?")) return;
+    await apiDelete(`/api/nutrition/meals?id=${editingMeal.id}`);
+    setShowMealModal(false);
+    await refresh();
+  };
+
   const handleDeleteDish = async (id: string) => {
     if (!confirm("Удалить из истории?")) return;
     await apiDelete(`/api/nutrition/dishes?id=${id}`);
@@ -304,9 +312,9 @@ export function NutritionSection() {
                     </button>
                     <button
                       onClick={() => handleDeleteMeal(meal.id)}
-                      className="ml-2 rounded p-1 text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition"
+                      className="ml-2 rounded px-2 py-1 text-xs text-neutral-400 hover:bg-red-50 hover:text-red-500 transition shrink-0"
                     >
-                      ×
+                      Удалить
                     </button>
                   </div>
                 ))}
@@ -586,6 +594,11 @@ export function NutritionSection() {
           )}
 
           <div className="flex justify-end gap-2">
+            {editingMeal && (
+              <Button variant="danger" onClick={handleDeleteMealFromModal}>
+                Удалить
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setShowMealModal(false)}>
               Отмена
             </Button>

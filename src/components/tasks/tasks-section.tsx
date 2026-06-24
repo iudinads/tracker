@@ -29,16 +29,22 @@ export function TasksSection() {
     categoryId: "",
   });
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [showDoneModal, setShowDoneModal] = useState(false);
 
   const categories = data.taskCategories;
   const activeCategory = selectedCategory || categories[0]?.id || null;
   const categoryNames = Object.fromEntries(categories.map((c) => [c.id, c.name]));
 
-  const allBoardTasks = sortTasksByDeadline(
-    data.tasks.filter((t) => t.status !== "cancelled")
+  const activeTasks = data.tasks.filter(
+    (t) => t.status !== "cancelled" && t.status !== "done"
   );
+  const doneTasks = sortTasksByDeadline(
+    data.tasks.filter((t) => t.status === "done")
+  );
+
+  const allBoardTasks = sortTasksByDeadline(activeTasks);
   const categoryTasks = sortTasksByDeadline(
-    data.tasks.filter((t) => t.categoryId === activeCategory && t.status !== "cancelled")
+    activeTasks.filter((t) => t.categoryId === activeCategory)
   );
 
   const openNewTask = () => {
@@ -119,6 +125,81 @@ export function TasksSection() {
     await refresh();
   };
 
+  const handleRestoreTask = async (task: Task) => {
+    await apiPut("/api/tasks", { id: task.id, status: "backlog" });
+    await refresh();
+  };
+
+  const renderTaskCard = (task: Task, options?: { showCategory?: boolean }) => {
+    const isExpanded = expandedTaskId === task.id;
+
+    return (
+      <div
+        key={task.id}
+        className="group rounded-xl border border-neutral-100 bg-white p-4 transition hover:border-neutral-200 hover:shadow-sm"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <button
+            className="flex-1 text-left"
+            onClick={() =>
+              setExpandedTaskId((prev) => (prev === task.id ? null : task.id))
+            }
+          >
+            {options?.showCategory && categoryNames[task.categoryId] && (
+              <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                {categoryNames[task.categoryId]}
+              </span>
+            )}
+            <p className="font-medium">
+              {task.title}
+              {task.comment && !isExpanded && (
+                <span className="ml-2 text-xs font-normal text-neutral-400">
+                  есть комментарий
+                </span>
+              )}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+              <StatusBadge status={task.status} />
+              {task.scheduledDate && <span>{formatDate(task.scheduledDate)}</span>}
+              {task.deadline && <span>до {formatDate(task.deadline)}</span>}
+            </div>
+            {isExpanded && task.comment && (
+              <p className="mt-3 border-t border-neutral-100 pt-3 text-sm text-neutral-600 whitespace-pre-wrap">
+                {task.comment}
+              </p>
+            )}
+          </button>
+          <div className="flex shrink-0 gap-1">
+            {isExpanded && (
+              <>
+                <button
+                  onClick={() => openEditTask(task)}
+                  className="rounded-lg px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100"
+                >
+                  Изменить
+                </button>
+                {task.status === "done" && (
+                  <button
+                    onClick={() => handleRestoreTask(task)}
+                    className="rounded-lg px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100"
+                  >
+                    Вернуть
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              onClick={() => handleDeleteTask(task.id)}
+              className="rounded-lg p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500 transition"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return <div className="py-20 text-center text-neutral-400">Загрузка...</div>;
   }
@@ -150,6 +231,15 @@ export function TasksSection() {
               Доска
             </button>
           </div>
+          {categories.length > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowDoneModal(true)}
+            >
+              Выполненные{doneTasks.length > 0 ? ` (${doneTasks.length})` : ""}
+            </Button>
+          )}
           {categories.length > 0 && (
             <Button size="sm" onClick={openNewTask}>
               + Дело
@@ -222,66 +312,7 @@ export function TasksSection() {
             </div>
           ) : (
             <div className="space-y-2">
-              {categoryTasks.map((task) => {
-                const isExpanded = expandedTaskId === task.id;
-
-                return (
-                <div
-                  key={task.id}
-                  className="group rounded-xl border border-neutral-100 bg-white p-4 transition hover:border-neutral-200 hover:shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <button
-                      className="flex-1 text-left"
-                      onClick={() =>
-                        setExpandedTaskId((prev) => (prev === task.id ? null : task.id))
-                      }
-                    >
-                      <p
-                        className={`font-medium ${task.status === "cancelled" ? "line-through text-neutral-400" : ""}`}
-                      >
-                        {task.title}
-                        {task.comment && !isExpanded && (
-                          <span className="ml-2 text-xs font-normal text-neutral-400">
-                            есть комментарий
-                          </span>
-                        )}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
-                        <StatusBadge status={task.status} />
-                        {task.scheduledDate && (
-                          <span>{formatDate(task.scheduledDate)}</span>
-                        )}
-                        {task.deadline && (
-                          <span>до {formatDate(task.deadline)}</span>
-                        )}
-                      </div>
-                      {isExpanded && task.comment && (
-                        <p className="mt-3 border-t border-neutral-100 pt-3 text-sm text-neutral-600 whitespace-pre-wrap">
-                          {task.comment}
-                        </p>
-                      )}
-                    </button>
-                    <div className="flex shrink-0 gap-1">
-                      {isExpanded && (
-                        <button
-                          onClick={() => openEditTask(task)}
-                          className="rounded-lg px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100"
-                        >
-                          Изменить
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteTask(task.id)}
-                        className="rounded-lg p-1.5 text-neutral-300 hover:bg-red-50 hover:text-red-500 transition"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-              })}
+              {categoryTasks.map((task) => renderTaskCard(task))}
             </div>
           )}
         </>
@@ -367,6 +398,23 @@ export function TasksSection() {
             <Button onClick={handleSaveTask}>Сохранить</Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={showDoneModal}
+        onClose={() => setShowDoneModal(false)}
+        title="Выполненные дела"
+        wide
+      >
+        {doneTasks.length === 0 ? (
+          <p className="py-8 text-center text-sm text-neutral-400">
+            Пока нет выполненных дел
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {doneTasks.map((task) => renderTaskCard(task, { showCategory: true }))}
+          </div>
+        )}
       </Modal>
     </div>
   );

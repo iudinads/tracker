@@ -4,7 +4,7 @@ import { useState } from "react";
 import { apiDelete, apiPut } from "@/lib/data-context";
 import { Task, TaskStatus } from "@/lib/types";
 import {
-  KANBAN_STATUSES,
+  KANBAN_ACTIVE_STATUSES,
   isDeadlineOverdue,
   isDeadlineSoon,
   sortTasksByDeadline,
@@ -39,7 +39,7 @@ export function KanbanBoard({
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const boardTasks = tasks.filter((t) => t.status !== "cancelled");
+  const boardTasks = tasks.filter((t) => t.status !== "cancelled" && t.status !== "done");
 
   const handleDrop = async (taskId: string, newStatus: TaskStatus) => {
     const task = tasks.find((t) => t.id === taskId);
@@ -72,7 +72,7 @@ export function KanbanBoard({
 
   return (
     <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-      {KANBAN_STATUSES.map((column) => {
+      {KANBAN_ACTIVE_STATUSES.map((column) => {
         const columnTasks = sortTasksByDeadline(
           boardTasks.filter((t) => t.status === column.value)
         );
@@ -188,7 +188,7 @@ export function KanbanBoard({
                           ←
                         </button>
                       )}
-                      {column.value !== "done" && (
+                      {column.value !== "in_progress" && (
                         <button
                           onClick={() => moveTask(task, "next")}
                           className="rounded px-2 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100"

@@ -6,6 +6,11 @@ export const KANBAN_STATUSES: { value: TaskStatus; label: string }[] = [
   { value: "done", label: "Done" },
 ];
 
+export const KANBAN_ACTIVE_STATUSES: { value: TaskStatus; label: string }[] = [
+  { value: "backlog", label: "Backlog" },
+  { value: "in_progress", label: "In Progress" },
+];
+
 export function sortTasksByDeadline(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
     if (!a.deadline && !b.deadline) {
