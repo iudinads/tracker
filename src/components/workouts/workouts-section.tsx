@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { apiDelete, apiPost, apiPut, useData } from "@/lib/data-context";
 import { Exercise, ExerciseSet, Workout, WorkoutCategory, WorkoutTemplate, WorkoutTemplateExercise } from "@/lib/types";
@@ -9,6 +9,9 @@ import {
   directionBg,
   directionColor,
   getPreviousWorkout,
+  getProgressRecommendations,
+  progressActionLabel,
+  ProgressRecommendation,
 } from "@/lib/workout-comparison";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -89,6 +92,21 @@ export function WorkoutsSection() {
       if (dateDiff !== 0) return dateDiff;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+  const progressRecommendations = useMemo(() => {
+    if (!activeCategory || categoryWorkouts.length === 0) return [];
+    const lastWorkout = categoryWorkouts[0];
+    const previous = getPreviousWorkout(categoryWorkouts, lastWorkout);
+    return getProgressRecommendations(lastWorkout, previous);
+  }, [activeCategory, categoryWorkouts]);
+
+  const recommendationMap = useMemo(
+    () => new Map(progressRecommendations.map((r) => [r.normalizedName, r])),
+    [progressRecommendations]
+  );
+
+  const getRecommendation = (name: string): ProgressRecommendation | undefined =>
+    recommendationMap.get(name.trim().toLowerCase());
 
   const openNewWorkout = () => {
     setEditingWorkout(null);
@@ -309,6 +327,33 @@ export function WorkoutsSection() {
     setWorkoutForm({ ...workoutForm, exercises });
   };
 
+  const applyRecommendation = (
+    exerciseIndex: number,
+    rec: ProgressRecommendation
+  ) => {
+    const exercises = [...workoutForm.exercises];
+    let sets = [...exercises[exerciseIndex].sets];
+
+    while (sets.length < rec.suggestedSets) {
+      sets.push({
+        setNumber: sets.length + 1,
+        reps: rec.suggestedReps,
+        weight: rec.suggestedWeight,
+      });
+    }
+    while (sets.length > rec.suggestedSets) {
+      sets.pop();
+    }
+    sets = sets.map((s, i) => ({
+      setNumber: i + 1,
+      reps: rec.suggestedReps,
+      weight: rec.suggestedWeight,
+    }));
+
+    exercises[exerciseIndex] = { ...exercises[exerciseIndex], sets };
+    setWorkoutForm({ ...workoutForm, exercises });
+  };
+
   if (loading) {
     return <div className="py-20 text-center text-neutral-400">Загрузка...</div>;
   }
@@ -522,6 +567,16 @@ export function WorkoutsSection() {
         wide
       >
         <div className="space-y-5">
+          {!editingWorkout && progressRecommendations.length > 0 && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+              <p className="text-sm font-medium text-emerald-900">Рекомендации по прогрессу</p>
+              <p className="mt-1 text-xs text-emerald-800">
+                Сначала +2 повторения (до 12), затем вес с небольшой просадкой в повторениях.
+                Подходов не больше 4. На основе тренировки от {formatDate(categoryWorkouts[0]?.date)}.
+              </p>
+            </div>
+          )}
+
           {!editingWorkout && categoryTemplates.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">Из шаблона</p>
@@ -582,7 +637,12 @@ export function WorkoutsSection() {
               </Button>
             </div>
 
-            {workoutForm.exercises.map((exercise, exIndex) => (
+            {workoutForm.exercises.map((exercise, exIndex) => {
+              const recommendation = !editingWorkout
+                ? getRecommendation(exercise.name)
+                : undefined;
+
+              return (
               <div key={exercise.id} className="rounded-xl border border-neutral-200 p-4 space-y-3">
                 <div className="flex gap-2">
                   <Input
@@ -601,6 +661,27 @@ export function WorkoutsSection() {
                     </button>
                   )}
                 </div>
+
+                {recommendation && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2.5 text-xs text-emerald-800">
+                    <p className="font-medium text-emerald-900">
+                      {progressActionLabel(recommendation.action)}: {recommendation.summary}
+                    </p>
+                    <p className="mt-1">
+                      Было: {recommendation.lastWeight} кг × {recommendation.lastReps} повт. ×{" "}
+                      {recommendation.lastSets} подх.
+                      {recommendation.reasons.length > 0 &&
+                        ` · ${recommendation.reasons.join(", ")}`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => applyRecommendation(exIndex, recommendation)}
+                      className="mt-2 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 hover:bg-emerald-50"
+                    >
+                      Подставить
+                    </button>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-neutral-500">Подходы</p>
@@ -647,7 +728,8 @@ export function WorkoutsSection() {
                   onChange={(e) => updateExercise(exIndex, "comment", e.target.value)}
                 />
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex justify-end gap-2">
