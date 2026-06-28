@@ -5,7 +5,19 @@ import { Exercise, Workout } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { categoryId, date, durationMinutes, avgHeartRate, calories, exercises } = body;
+  const {
+    categoryId,
+    date,
+    durationMinutes,
+    avgHeartRate,
+    calories,
+    runDurationSeconds,
+    distanceKm,
+    elevationM,
+    paceMinutes,
+    paceSeconds,
+    exercises,
+  } = body;
 
   if (!categoryId || !date) {
     return NextResponse.json({ error: "Required fields missing" }, { status: 400 });
@@ -19,6 +31,11 @@ export async function POST(request: NextRequest) {
     durationMinutes: durationMinutes || 0,
     avgHeartRate: avgHeartRate || undefined,
     calories: calories || undefined,
+    runDurationSeconds: runDurationSeconds || undefined,
+    distanceKm: distanceKm || undefined,
+    elevationM: elevationM || undefined,
+    paceMinutes: paceMinutes !== undefined ? paceMinutes : undefined,
+    paceSeconds: paceSeconds !== undefined ? paceSeconds : undefined,
     exercises: (exercises || []).map((ex: Exercise) => ({
       ...ex,
       id: ex.id || uuidv4(),
@@ -32,7 +49,19 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = await request.json();
-  const { id, date, durationMinutes, avgHeartRate, calories, exercises } = body;
+  const {
+    id,
+    date,
+    durationMinutes,
+    avgHeartRate,
+    calories,
+    runDurationSeconds,
+    distanceKm,
+    elevationM,
+    paceMinutes,
+    paceSeconds,
+    exercises,
+  } = body;
 
   if (!id) {
     return NextResponse.json({ error: "ID required" }, { status: 400 });
@@ -49,6 +78,13 @@ export async function PUT(request: NextRequest) {
   if (durationMinutes !== undefined) workout.durationMinutes = durationMinutes;
   if (avgHeartRate !== undefined) workout.avgHeartRate = avgHeartRate || undefined;
   if (calories !== undefined) workout.calories = calories || undefined;
+  if (runDurationSeconds !== undefined) {
+    workout.runDurationSeconds = runDurationSeconds || undefined;
+  }
+  if (distanceKm !== undefined) workout.distanceKm = distanceKm || undefined;
+  if (elevationM !== undefined) workout.elevationM = elevationM || undefined;
+  if (paceMinutes !== undefined) workout.paceMinutes = paceMinutes ?? undefined;
+  if (paceSeconds !== undefined) workout.paceSeconds = paceSeconds ?? undefined;
   if (exercises !== undefined) {
     workout.exercises = exercises.map((ex: Exercise) => ({
       ...ex,

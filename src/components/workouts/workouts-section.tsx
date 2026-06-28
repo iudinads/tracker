@@ -17,6 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Textarea } from "@/components/ui/input";
 import { formatDate } from "@/components/ui/badge";
+import {
+  durationToSeconds,
+  formatPace,
+  formatRunDuration,
+  isRunCategory,
+  parseDurationParts,
+  runWorkoutSummary,
+} from "@/lib/workout-run";
 
 interface ExerciseForm {
   id: string;
@@ -57,6 +65,21 @@ function exercisesFromTemplate(template: WorkoutTemplate): ExerciseForm[] {
   }));
 }
 
+const emptyWorkoutForm = () => ({
+  date: new Date().toISOString().split("T")[0],
+  durationMinutes: "",
+  avgHeartRate: "",
+  calories: "",
+  runHours: "",
+  runMinutes: "",
+  runSeconds: "",
+  distanceKm: "",
+  elevationM: "",
+  paceMinutes: "",
+  paceSeconds: "",
+  exercises: [emptyExercise()] as ExerciseForm[],
+});
+
 export function WorkoutsSection() {
   const { data, loading, refresh } = useData();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -68,13 +91,7 @@ export function WorkoutsSection() {
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [categoryName, setCategoryName] = useState("");
-  const [workoutForm, setWorkoutForm] = useState({
-    date: new Date().toISOString().split("T")[0],
-    durationMinutes: "",
-    avgHeartRate: "",
-    calories: "",
-    exercises: [emptyExercise()] as ExerciseForm[],
-  });
+  const [workoutForm, setWorkoutForm] = useState(emptyWorkoutForm());
   const [templateForm, setTemplateForm] = useState({
     name: "",
     exercises: [emptyTemplateExercise()] as TemplateExerciseForm[],
@@ -82,6 +99,9 @@ export function WorkoutsSection() {
 
   const categories = data.workoutCategories;
   const activeCategory = selectedCategory || categories[0]?.id || null;
+  const activeCategoryName =
+    categories.find((c) => c.id === activeCategory)?.name ?? "";
+  const isRunActive = isRunCategory(activeCategoryName);
   const categoryTemplates = data.workoutTemplates.filter(
     (t) => t.categoryId === activeCategory
   );
@@ -94,11 +114,11 @@ export function WorkoutsSection() {
     });
 
   const progressRecommendations = useMemo(() => {
-    if (!activeCategory || categoryWorkouts.length === 0) return [];
+    if (!activeCategory || isRunActive || categoryWorkouts.length === 0) return [];
     const lastWorkout = categoryWorkouts[0];
     const previous = getPreviousWorkout(categoryWorkouts, lastWorkout);
     return getProgressRecommendations(lastWorkout, previous);
-  }, [activeCategory, categoryWorkouts]);
+  }, [activeCategory, isRunActive, categoryWorkouts]);
 
   const recommendationMap = useMemo(
     () => new Map(progressRecommendations.map((r) => [r.normalizedName, r])),
@@ -110,13 +130,10 @@ export function WorkoutsSection() {
 
   const openNewWorkout = () => {
     setEditingWorkout(null);
-    setWorkoutForm({
-      date: new Date().toISOString().split("T")[0],
-      durationMinutes: "",
-      avgHeartRate: "",
-      calories: "",
-      exercises: [emptyExercise()],
-    });
+    const base = emptyWorkoutForm();
+    setWorkoutForm(
+      isRunActive ? { ...base, exercises: [] } : base
+    );
     setShowWorkoutModal(true);
   };
 
@@ -153,17 +170,36 @@ export function WorkoutsSection() {
 
   const openEditWorkout = (workout: Workout) => {
     setEditingWorkout(workout);
+    const duration = parseDurationParts(workout.runDurationSeconds);
+    const categoryIsRun = isRunCategory(
+      categories.find((c) => c.id === workout.categoryId)?.name ?? ""
+    );
+
     setWorkoutForm({
       date: workout.date,
       durationMinutes: workout.durationMinutes ? String(workout.durationMinutes) : "",
       avgHeartRate: workout.avgHeartRate ? String(workout.avgHeartRate) : "",
       calories: workout.calories ? String(workout.calories) : "",
-      exercises: workout.exercises.map((ex) => ({
-        id: ex.id,
-        name: ex.name,
-        sets: ex.sets.length > 0 ? ex.sets : [{ setNumber: 1, reps: 0, weight: 0 }],
-        comment: ex.comment || "",
-      })),
+      runHours: duration.hours,
+      runMinutes: duration.minutes,
+      runSeconds: duration.seconds,
+      distanceKm: workout.distanceKm ? String(workout.distanceKm) : "",
+      elevationM: workout.elevationM ? String(workout.elevationM) : "",
+      paceMinutes:
+        workout.paceMinutes !== undefined ? String(workout.paceMinutes) : "",
+      paceSeconds:
+        workout.paceSeconds !== undefined ? String(workout.paceSeconds) : "",
+      exercises: categoryIsRun
+        ? []
+        : workout.exercises.map((ex) => ({
+            id: ex.id,
+            name: ex.name,
+            sets:
+              ex.sets.length > 0
+                ? ex.sets
+                : [{ setNumber: 1, reps: 0, weight: 0 }],
+            comment: ex.comment || "",
+          })),
     });
     setShowWorkoutModal(true);
   };
@@ -185,27 +221,64 @@ export function WorkoutsSection() {
 
   const handleSaveWorkout = async () => {
     if (!activeCategory) return;
-    const exercises: Exercise[] = workoutForm.exercises
-      .filter((ex) => ex.name.trim())
-      .map((ex) => ({
-        id: ex.id,
-        name: ex.name.trim(),
-        sets: ex.sets.map((s, i) => ({
-          setNumber: i + 1,
-          reps: Number(s.reps) || 0,
-          weight: Number(s.weight) || 0,
-        })),
-        comment: ex.comment.trim() || undefined,
-      }));
 
-    const payload = {
-      categoryId: activeCategory,
-      date: workoutForm.date,
-      durationMinutes: Number(workoutForm.durationMinutes) || 0,
-      avgHeartRate: workoutForm.avgHeartRate ? Number(workoutForm.avgHeartRate) : undefined,
-      calories: workoutForm.calories ? Number(workoutForm.calories) : undefined,
-      exercises,
-    };
+    let payload;
+
+    if (isRunActive) {
+      const totalSeconds = durationToSeconds(
+        workoutForm.runHours,
+        workoutForm.runMinutes,
+        workoutForm.runSeconds
+      );
+      const paceMin =
+        workoutForm.paceMinutes !== "" ? Number(workoutForm.paceMinutes) : undefined;
+      const paceSec =
+        workoutForm.paceSeconds !== "" ? Number(workoutForm.paceSeconds) : undefined;
+
+      payload = {
+        categoryId: activeCategory,
+        date: workoutForm.date,
+        durationMinutes: totalSeconds ? Math.floor(totalSeconds / 60) : 0,
+        avgHeartRate: workoutForm.avgHeartRate
+          ? Number(workoutForm.avgHeartRate)
+          : undefined,
+        calories: workoutForm.calories ? Number(workoutForm.calories) : undefined,
+        runDurationSeconds: totalSeconds || undefined,
+        distanceKm: workoutForm.distanceKm
+          ? Number(workoutForm.distanceKm)
+          : undefined,
+        elevationM: workoutForm.elevationM
+          ? Number(workoutForm.elevationM)
+          : undefined,
+        paceMinutes: paceMin,
+        paceSeconds: paceSec,
+        exercises: [],
+      };
+    } else {
+      const exercises: Exercise[] = workoutForm.exercises
+        .filter((ex) => ex.name.trim())
+        .map((ex) => ({
+          id: ex.id,
+          name: ex.name.trim(),
+          sets: ex.sets.map((s, i) => ({
+            setNumber: i + 1,
+            reps: Number(s.reps) || 0,
+            weight: Number(s.weight) || 0,
+          })),
+          comment: ex.comment.trim() || undefined,
+        }));
+
+      payload = {
+        categoryId: activeCategory,
+        date: workoutForm.date,
+        durationMinutes: Number(workoutForm.durationMinutes) || 0,
+        avgHeartRate: workoutForm.avgHeartRate
+          ? Number(workoutForm.avgHeartRate)
+          : undefined,
+        calories: workoutForm.calories ? Number(workoutForm.calories) : undefined,
+        exercises,
+      };
+    }
 
     if (editingWorkout) {
       await apiPut("/api/workouts", { id: editingWorkout.id, ...payload });
@@ -405,11 +478,13 @@ export function WorkoutsSection() {
               {categories.find((c) => c.id === activeCategory)?.name}
             </h3>
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setShowTemplateModal(true)}>
-                Шаблоны
-              </Button>
+              {!isRunActive && (
+                <Button size="sm" variant="secondary" onClick={() => setShowTemplateModal(true)}>
+                  Шаблоны
+                </Button>
+              )}
               <Button size="sm" onClick={openNewWorkout}>
-                + Тренировка
+                + {isRunActive ? "Забег" : "Тренировка"}
               </Button>
             </div>
           </div>
@@ -421,10 +496,18 @@ export function WorkoutsSection() {
           ) : (
             <div className="space-y-3">
               {categoryWorkouts.map((workout, index) => {
-                const previous = getPreviousWorkout(categoryWorkouts, workout);
-                const comparison = compareWorkouts(workout, previous);
+                const workoutIsRun = isRunCategory(
+                  categories.find((c) => c.id === workout.categoryId)?.name ?? ""
+                );
+                const previous = workoutIsRun
+                  ? null
+                  : getPreviousWorkout(categoryWorkouts, workout);
+                const comparison = workoutIsRun
+                  ? null
+                  : compareWorkouts(workout, previous);
                 const isExpanded = expandedWorkout === workout.id;
-                const showProgress = index > 0 || previous !== null;
+                const showProgress = !workoutIsRun && (index > 0 || previous !== null);
+                const runSummary = workoutIsRun ? runWorkoutSummary(workout) : [];
 
                 return (
                   <div
@@ -439,14 +522,24 @@ export function WorkoutsSection() {
                         <div>
                           <p className="font-medium">{formatDate(workout.date)}</p>
                           <div className="mt-1 flex flex-wrap gap-3 text-xs text-neutral-500">
-                            {workout.durationMinutes > 0 && (
-                              <span>{workout.durationMinutes} мин</span>
+                            {workoutIsRun ? (
+                              runSummary.length > 0 ? (
+                                runSummary.map((part) => <span key={part}>{part}</span>)
+                              ) : (
+                                <span>Нет данных</span>
+                              )
+                            ) : (
+                              <>
+                                {workout.durationMinutes > 0 && (
+                                  <span>{workout.durationMinutes} мин</span>
+                                )}
+                                {workout.avgHeartRate && (
+                                  <span>{workout.avgHeartRate} bpm</span>
+                                )}
+                                {workout.calories && <span>{workout.calories} kcal</span>}
+                                <span>{workout.exercises.length} упражн.</span>
+                              </>
                             )}
-                            {workout.avgHeartRate && (
-                              <span>{workout.avgHeartRate} bpm</span>
-                            )}
-                            {workout.calories && <span>{workout.calories} kcal</span>}
-                            <span>{workout.exercises.length} упражн.</span>
                           </div>
                         </div>
                         <span className="text-neutral-400">{isExpanded ? "▲" : "▼"}</span>
@@ -455,6 +548,49 @@ export function WorkoutsSection() {
 
                     {isExpanded && (
                       <div className="border-t border-neutral-100 px-4 pb-4">
+                        {workoutIsRun ? (
+                          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="text-xs text-neutral-400">Время</p>
+                              <p className="font-medium">
+                                {formatRunDuration(workout.runDurationSeconds) || "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-400">Дистанция</p>
+                              <p className="font-medium">
+                                {workout.distanceKm ? `${workout.distanceKm} км` : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-400">Темп</p>
+                              <p className="font-medium">
+                                {formatPace(workout.paceMinutes, workout.paceSeconds)
+                                  ? `${formatPace(workout.paceMinutes, workout.paceSeconds)} /км`
+                                  : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-400">Пульс</p>
+                              <p className="font-medium">
+                                {workout.avgHeartRate ? `${workout.avgHeartRate} bpm` : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-400">Калории</p>
+                              <p className="font-medium">
+                                {workout.calories ? `${workout.calories} kcal` : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-neutral-400">Подъём</p>
+                              <p className="font-medium">
+                                {workout.elevationM ? `${workout.elevationM} м` : "—"}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
                         {showProgress && previous && (
                           <p className="mt-3 mb-2 text-xs text-neutral-400">
                             Сравнение с {formatDate(previous.date)}
@@ -463,7 +599,7 @@ export function WorkoutsSection() {
 
                         <div className="space-y-3">
                           {workout.exercises.map((exercise) => {
-                            const exComp = comparison.exerciseComparisons.find(
+                            const exComp = comparison?.exerciseComparisons.find(
                               (c) => c.exerciseName.toLowerCase() === exercise.name.toLowerCase()
                             );
                             const isNew = exComp?.isNew && showProgress;
@@ -523,6 +659,8 @@ export function WorkoutsSection() {
                             );
                           })}
                         </div>
+                          </>
+                        )}
 
                         <div className="mt-4 flex gap-2">
                           <Button size="sm" variant="secondary" onClick={() => openEditWorkout(workout)}>
@@ -563,10 +701,149 @@ export function WorkoutsSection() {
       <Modal
         open={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
-        title={editingWorkout ? "Редактировать тренировку" : "Новая тренировка"}
+        title={
+          (editingWorkout
+            ? isRunCategory(
+                categories.find((c) => c.id === editingWorkout.categoryId)?.name ?? ""
+              )
+            : isRunActive)
+            ? editingWorkout
+              ? "Редактировать забег"
+              : "Новый забег"
+            : editingWorkout
+              ? "Редактировать тренировку"
+              : "Новая тренировка"
+        }
         wide
       >
         <div className="space-y-5">
+          {(editingWorkout
+            ? isRunCategory(
+                categories.find((c) => c.id === editingWorkout.categoryId)?.name ?? ""
+              )
+            : isRunActive) ? (
+            <>
+              <Input
+                label="Дата"
+                type="date"
+                value={workoutForm.date}
+                onChange={(e) => setWorkoutForm({ ...workoutForm, date: e.target.value })}
+              />
+              <div>
+                <p className="mb-2 text-sm font-medium text-neutral-700">Время</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input
+                    label="Часы"
+                    type="number"
+                    min={0}
+                    value={workoutForm.runHours}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, runHours: e.target.value })
+                    }
+                    placeholder="0"
+                  />
+                  <Input
+                    label="Минуты"
+                    type="number"
+                    min={0}
+                    value={workoutForm.runMinutes}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, runMinutes: e.target.value })
+                    }
+                    placeholder="45"
+                  />
+                  <Input
+                    label="Секунды"
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={workoutForm.runSeconds}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, runSeconds: e.target.value })
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Дистанция (км)"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={workoutForm.distanceKm}
+                  onChange={(e) =>
+                    setWorkoutForm({ ...workoutForm, distanceKm: e.target.value })
+                  }
+                />
+                <Input
+                  label="Подъём (м)"
+                  type="number"
+                  min={0}
+                  value={workoutForm.elevationM}
+                  onChange={(e) =>
+                    setWorkoutForm({ ...workoutForm, elevationM: e.target.value })
+                  }
+                />
+                <Input
+                  label="Средний пульс (bpm)"
+                  type="number"
+                  min={0}
+                  value={workoutForm.avgHeartRate}
+                  onChange={(e) =>
+                    setWorkoutForm({ ...workoutForm, avgHeartRate: e.target.value })
+                  }
+                />
+                <Input
+                  label="Калории"
+                  type="number"
+                  min={0}
+                  value={workoutForm.calories}
+                  onChange={(e) =>
+                    setWorkoutForm({ ...workoutForm, calories: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium text-neutral-700">
+                  Средний темп (мин/км)
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Минуты"
+                    type="number"
+                    min={0}
+                    value={workoutForm.paceMinutes}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, paceMinutes: e.target.value })
+                    }
+                    placeholder="5"
+                  />
+                  <Input
+                    label="Секунды"
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={workoutForm.paceSeconds}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, paceSeconds: e.target.value })
+                    }
+                    placeholder="30"
+                  />
+                </div>
+                {workoutForm.paceMinutes !== "" && workoutForm.paceSeconds !== "" && (
+                  <p className="mt-2 text-xs text-neutral-500">
+                    {formatPace(
+                      Number(workoutForm.paceMinutes),
+                      Number(workoutForm.paceSeconds)
+                    )}{" "}
+                    /км
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
           {!editingWorkout && progressRecommendations.length > 0 && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
               <p className="text-sm font-medium text-emerald-900">Рекомендации по прогрессу</p>
@@ -577,7 +854,7 @@ export function WorkoutsSection() {
             </div>
           )}
 
-          {!editingWorkout && categoryTemplates.length > 0 && (
+          {!editingWorkout && !isRunActive && categoryTemplates.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">Из шаблона</p>
               <div className="flex flex-wrap gap-1.5">
@@ -731,6 +1008,8 @@ export function WorkoutsSection() {
               );
             })}
           </div>
+            </>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowWorkoutModal(false)}>

@@ -38,6 +38,11 @@ export interface Workout {
   durationMinutes: number;
   avgHeartRate?: number;
   calories?: number;
+  runDurationSeconds?: number;
+  distanceKm?: number;
+  elevationM?: number;
+  paceMinutes?: number;
+  paceSeconds?: number;
   exercises: Exercise[];
   createdAt: string;
 }
